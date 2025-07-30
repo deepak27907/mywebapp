@@ -54,9 +54,23 @@ try {
   
   const missingVars = requiredEnvVars.filter(varName => !import.meta.env[varName]);
   
+  // Debug: Log all environment variables (safe to show)
+  console.log('🔍 Environment Variables Debug:');
+  console.log('VITE_FIREBASE_API_KEY:', import.meta.env.VITE_FIREBASE_API_KEY ? 'SET' : 'NOT SET');
+  console.log('VITE_FIREBASE_AUTH_DOMAIN:', import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ? 'SET' : 'NOT SET');
+  console.log('VITE_FIREBASE_PROJECT_ID:', import.meta.env.VITE_FIREBASE_PROJECT_ID ? 'SET' : 'NOT SET');
+  console.log('VITE_FIREBASE_STORAGE_BUCKET:', import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ? 'SET' : 'NOT SET');
+  console.log('VITE_FIREBASE_MESSAGING_SENDER_ID:', import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ? 'SET' : 'NOT SET');
+  console.log('VITE_FIREBASE_APP_ID:', import.meta.env.VITE_FIREBASE_APP_ID ? 'SET' : 'NOT SET');
+  console.log('VITE_GEMINI_API_KEY:', import.meta.env.VITE_GEMINI_API_KEY ? 'SET' : 'NOT SET');
+  
   if (missingVars.length > 0) {
     console.warn('Missing Firebase environment variables:', missingVars);
     console.warn('Firebase will not be initialized. App will run in offline mode.');
+    console.warn('💡 To fix this:');
+    console.warn('1. Go to Netlify Dashboard → Site Settings → Environment Variables');
+    console.warn('2. Add all missing variables with correct values');
+    console.warn('3. Redeploy the site');
     app = null;
     db = null;
     auth = null;
@@ -64,7 +78,7 @@ try {
     app = initializeApp(firebaseConfig);
     db = getFirestore(app);
     auth = getAuth(app);
-    console.log('Firebase initialized successfully');
+    console.log('✅ Firebase initialized successfully');
   }
 } catch (error) {
   console.error('Firebase initialization error:', error);

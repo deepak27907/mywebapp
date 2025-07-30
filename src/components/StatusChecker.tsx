@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CheckCircle, AlertCircle, Info, Bug, RefreshCw } from 'lucide-react';
 
 const StatusChecker: React.FC = () => {
@@ -18,6 +18,13 @@ const StatusChecker: React.FC = () => {
     firebaseKeyLength: import.meta.env.VITE_FIREBASE_API_KEY?.length || 0,
     geminiKeyLength: import.meta.env.VITE_GEMINI_API_KEY?.length || 0
   };
+
+  // Log debug info to console
+  useEffect(() => {
+    console.log('🔍 StatusChecker Debug Info:', debugInfo);
+    console.log('🌐 Current URL:', window.location.href);
+    console.log('📦 Build Environment:', import.meta.env.MODE);
+  }, [debugInfo]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -76,6 +83,7 @@ const StatusChecker: React.FC = () => {
             <div>Firebase Domain: {debugInfo.hasFirebaseDomain ? '✅' : '❌'}</div>
             <div>Firebase Project ID: {debugInfo.hasFirebaseProjectId ? '✅' : '❌'}</div>
             <div>Gemini Key: {debugInfo.hasGeminiKey ? '✅' : '❌'} ({debugInfo.geminiKeyLength} chars)</div>
+            <div>Environment: {import.meta.env.MODE}</div>
           </div>
         </div>
 
@@ -88,6 +96,7 @@ const StatusChecker: React.FC = () => {
               <p className="text-blue-600">Data is stored locally. Some features may be limited.</p>
               <p className="text-blue-600 mt-1">Check Netlify environment variables if you want online mode.</p>
               <p className="text-blue-600 mt-1">Click refresh button after setting variables.</p>
+              <p className="text-blue-600 mt-1">Check browser console for detailed debug info.</p>
             </div>
           </div>
         )}
