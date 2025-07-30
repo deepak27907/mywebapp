@@ -1,13 +1,17 @@
 {
-  "name": "vite-react-typescript-starter",
+  "name": "insidementor-academic-wellness-app",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "AI-powered academic wellness app with task management, mood tracking, journaling, and AI mentor",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "setup": "node setup-deployment.js",
+    "deploy:check": "npm run build && echo '✅ Build successful - ready for deployment'",
+    "deploy:netlify": "npm run build && echo '🚀 Ready to deploy to Netlify'"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

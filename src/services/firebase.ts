@@ -124,7 +124,31 @@ class FirebaseService {
   // Authentication methods
   async signInWithEmailAndPassword(email: string, password: string): Promise<FirebaseUser> {
     if (!this.isFirebaseAvailable()) {
-      throw new Error('Firebase not configured');
+      // Fallback authentication for when Firebase is not configured
+      console.warn('Firebase not configured - using fallback authentication');
+      
+      // Check if user exists in mock data
+      const existingUser = Array.from(mockData.users.values()).find(user => user.email === email);
+      
+      if (!existingUser) {
+        throw new Error('User not found. Please create an account first.');
+      }
+      
+      // In a real app, you'd hash the password. For demo purposes, we'll accept any password
+      // that matches the email (this is just for demonstration)
+      if (password.length < 6) {
+        throw new Error('Password must be at least 6 characters long');
+      }
+      
+      // Create a mock Firebase user object
+      const mockFirebaseUser = {
+        uid: existingUser.id,
+        email: existingUser.email,
+        displayName: existingUser.name,
+        // Add other Firebase user properties as needed
+      } as FirebaseUser;
+      
+      return mockFirebaseUser;
     }
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -137,7 +161,31 @@ class FirebaseService {
 
   async createUserWithEmailAndPassword(email: string, password: string): Promise<FirebaseUser> {
     if (!this.isFirebaseAvailable()) {
-      throw new Error('Firebase not configured');
+      // Fallback user creation for when Firebase is not configured
+      console.warn('Firebase not configured - using fallback user creation');
+      
+      // Check if user already exists
+      const existingUser = Array.from(mockData.users.values()).find(user => user.email === email);
+      if (existingUser) {
+        throw new Error('User with this email already exists');
+      }
+      
+      if (password.length < 6) {
+        throw new Error('Password must be at least 6 characters long');
+      }
+      
+      // Create a new user ID
+      const userId = Date.now().toString();
+      
+      // Create a mock Firebase user object
+      const mockFirebaseUser = {
+        uid: userId,
+        email: email,
+        displayName: email.split('@')[0], // Use email prefix as display name
+        // Add other Firebase user properties as needed
+      } as FirebaseUser;
+      
+      return mockFirebaseUser;
     }
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
