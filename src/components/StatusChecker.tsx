@@ -1,7 +1,9 @@
-import React from 'react';
-import { CheckCircle, AlertCircle, Info, Bug } from 'lucide-react';
+import React, { useState } from 'react';
+import { CheckCircle, AlertCircle, Info, Bug, RefreshCw } from 'lucide-react';
 
 const StatusChecker: React.FC = () => {
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_API_KEY && 
                                import.meta.env.VITE_FIREBASE_API_KEY !== 'your_firebase_api_key_here';
   const isGeminiConfigured = import.meta.env.VITE_GEMINI_API_KEY && 
@@ -17,9 +19,26 @@ const StatusChecker: React.FC = () => {
     geminiKeyLength: import.meta.env.VITE_GEMINI_API_KEY?.length || 0
   };
 
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    setTimeout(() => {
+      window.location.reload();
+    }, 1000);
+  };
+
   return (
     <div className="fixed bottom-4 right-4 bg-white rounded-lg shadow-lg p-4 border border-gray-200 max-w-sm">
-      <h3 className="text-sm font-semibold text-gray-800 mb-2">App Status</h3>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold text-gray-800">App Status</h3>
+        <button 
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+          className="p-1 hover:bg-gray-100 rounded transition-colors"
+          title="Refresh to check for new environment variables"
+        >
+          <RefreshCw className={`w-4 h-4 text-gray-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
       
       <div className="space-y-2">
         {/* Firebase Status */}
@@ -68,6 +87,7 @@ const StatusChecker: React.FC = () => {
               <p className="font-medium">Offline Mode Active</p>
               <p className="text-blue-600">Data is stored locally. Some features may be limited.</p>
               <p className="text-blue-600 mt-1">Check Netlify environment variables if you want online mode.</p>
+              <p className="text-blue-600 mt-1">Click refresh button after setting variables.</p>
             </div>
           </div>
         )}
