@@ -3,11 +3,12 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 // Initialize Gemini AI with 2.5 Pro model
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 console.log('Gemini API Key available:', !!apiKey);
-const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
+
 
 export interface AIGreetingResponse {
   greeting: string;
   progressInsight: string;
+  quickTip: string;
 }
 
 export interface AIMoodInsightResponse {
@@ -30,8 +31,36 @@ export interface AIMentorResponse {
   response: string;
 }
 
+export interface AITaskParseResponse {
+  title: string;
+  dueDate?: string;
+  time?: string;
+  priority: 'low' | 'medium' | 'high';
+  description?: string;
+}
+
+export interface AIMoodInsightResponse {
+  observation: string;
+  followUpAction?: string;
+}
+
+export interface AIProgressReportResponse {
+  moodTrend: string;
+  productivityInsight: string;
+  journalThemes: string;
+  recommendations: string[];
+}
+
+export interface AIWeeklyReportResponse {
+  summary: string;
+  moodAnalysis: string;
+  taskAnalysis: string;
+  journalInsights: string;
+  nextWeekGoals: string[];
+}
+
 // Cache for AI responses to reduce API calls
-const responseCache = new Map<string, { data: any; timestamp: number }>();
+const responseCache = new Map<string, { data: Record<string, unknown>; timestamp: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 const RATE_LIMIT_DELAY = 2000; // 2 seconds between requests
 let lastRequestTime = 0;
@@ -44,6 +73,13 @@ class AIService {
       return null;
     }
     return new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: 'gemini-2.5-pro' });
+  }
+
+  private getTimeOfDay(): string {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Morning';
+    if (hour < 17) return 'Afternoon';
+    return 'Evening';
   }
 
   private cleanAIResponse(text: string): string {
@@ -81,7 +117,7 @@ class AIService {
     lastRequestTime = Date.now();
   }
 
-  private getCacheKey(method: string, data: any, userId?: string): string {
+  private getCacheKey(method: string, data: Record<string, unknown>, userId?: string): string {
     const userPrefix = userId ? `user_${userId}_` : '';
     return `${userPrefix}${method}_${JSON.stringify(data)}`;
   }
@@ -95,7 +131,7 @@ class AIService {
     return null;
   }
 
-  private setCachedResponse(cacheKey: string, data: any): void {
+  private setCachedResponse(cacheKey: string, data: Record<string, unknown>): void {
     responseCache.set(cacheKey, {
       data,
       timestamp: Date.now()
@@ -104,47 +140,107 @@ class AIService {
 
   private async retryAIRequest<T>(
     requestFn: () => Promise<T>,
-    maxRetries: number = 2
+    maxRetries: number = 3
   ): Promise<T> {
-    let lastError: any;
+    let lastError: unknown;
     
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        // Apply rate limiting
         await this.rateLimit();
         
         return await requestFn();
-      } catch (error: any) {
+      } catch (error: unknown) {
         lastError = error;
         
-        // Check if it's a rate limit or overload error
-        if (error.message?.includes('overloaded') || error.message?.includes('rate limit')) {
-          if (attempt < maxRetries) {
-            const delay = Math.pow(2, attempt) * 1000; // Exponential backoff
-            console.log(`AI request failed, retrying in ${delay}ms...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-            continue;
-          }
+        // Check if it's a rate limit, overload, or service unavailable error
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const isRetryableError = errorMessage.includes('overloaded') || 
+                               errorMessage.includes('rate limit') ||
+                               errorMessage.includes('503') ||
+                               errorMessage.includes('service unavailable') ||
+                               errorMessage.includes('quota exceeded');
+        
+        if (isRetryableError && attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000; // Exponential backoff
+          console.log(`AI request failed (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
         }
         
-        throw error;
+        // If it's not a retryable error or we've exhausted retries, throw
+        if (!isRetryableError) {
+          console.error('Non-retryable AI error:', error);
+          throw error;
+        }
       }
     }
     
+    console.error(`AI request failed after ${maxRetries} attempts:`, lastError);
     throw lastError;
+  }
+
+  async parseTaskInput(
+    rawText: string
+  ): Promise<AITaskParseResponse> {
+    const model = this.getModel();
+    if (!model) {
+      return {
+        title: rawText,
+        priority: 'medium'
+      };
+    }
+
+    const currentDate = new Date().toISOString().split('T')[0];
+    const prompt = `You are a task parser. Extract the Title, Due Date, Time, and Priority from the following text. The current date is ${currentDate}. Respond only with a JSON object.
+
+Text: "${rawText}"
+
+Return JSON with these fields:
+- title: The task title
+- dueDate: Date in YYYY-MM-DD format (optional)
+- time: Time in HH:MM format (optional)
+- priority: "low", "medium", or "high"
+- description: Any additional details (optional)
+
+Example: {"title": "Study Physics", "dueDate": "2025-07-31", "time": "16:00", "priority": "high"}`;
+
+    try {
+      const result = await this.retryAIRequest(async () => {
+        return await model.generateContent(prompt);
+      });
+      const response = await result.response;
+      const text = response.text();
+      
+      const cleanedText = this.cleanAIResponse(text);
+      try {
+        return JSON.parse(cleanedText);
+      } catch (parseError) {
+        console.error('JSON parse error, using fallback:', parseError);
+        return {
+          title: rawText,
+          priority: 'medium'
+        };
+      }
+    } catch (error) {
+      console.error('Error parsing task input:', error);
+      return {
+        title: rawText,
+        priority: 'medium'
+      };
+    }
   }
 
   async generateDashboardGreeting(
     userName: string,
-    recentTasks: any[],
-    recentMoodLogs: any[],
-    userId: string
+    recentTasks: Array<{ title: string; status: string; priority: string }>,
+    recentMoodLogs: Array<{ mood: string; energy: number; date: Date }>
   ): Promise<AIGreetingResponse> {
     const model = this.getModel();
     if (!model) {
       return {
         greeting: `Good morning, ${userName}! Ready to make today productive?`,
-        progressInsight: 'Keep up the great work on your tasks!'
+        progressInsight: 'Keep up the great work on your tasks!',
+        quickTip: 'Start with your most important task to build momentum.'
       };
     }
 
@@ -155,7 +251,7 @@ class AIService {
       moodCount: recentMoodLogs.length,
       lastTask: recentTasks[0]?.title || '',
       lastMood: recentMoodLogs[0]?.mood || ''
-    }, userId);
+    });
 
     // Check cache first
     const cached = this.getCachedResponse<AIGreetingResponse>(cacheKey);
@@ -163,14 +259,22 @@ class AIService {
       return cached;
     }
 
-    const prompt = `You are InsideMentor, creating a personalized greeting for a student's dashboard.
+    const prompt = `You are the voice of the InsideMentor app. Based on the following user data, generate three distinct JSON fields: greeting, progressInsight, and quickTip. Be warm, encouraging, and concise.
 
-Student name: ${userName}
-Recent tasks: ${JSON.stringify(recentTasks)}
-Recent mood logs: ${JSON.stringify(recentMoodLogs)}
+User Data:
+{
+  "userName": "${userName}",
+  "timeOfDay": "${this.getTimeOfDay()}",
+  "recentTasks": ${JSON.stringify(recentTasks)},
+  "recentMoodLogs": ${JSON.stringify(recentMoodLogs)}
+}
 
-Create a personalized greeting and progress insight. Return as JSON:
-{"greeting": "personalized greeting message", "progressInsight": "brief insight about their progress"}`;
+Expected AI Response (Output):
+{
+  "greeting": "personalized greeting message",
+  "progressInsight": "brief insight about their progress",
+  "quickTip": "bite-sized, actionable advice based on context"
+}`;
 
     try {
       const result = await this.retryAIRequest(async () => {
@@ -190,7 +294,8 @@ Create a personalized greeting and progress insight. Return as JSON:
         console.error('JSON parse error, using fallback:', parseError);
         const fallback = {
           greeting: `Good morning, ${userName}! Ready to make today productive?`,
-          progressInsight: 'Keep up the great work on your tasks!'
+          progressInsight: 'Keep up the great work on your tasks!',
+          quickTip: 'Start with your most important task to build momentum.'
         };
         this.setCachedResponse(cacheKey, fallback);
         return fallback;
@@ -199,7 +304,8 @@ Create a personalized greeting and progress insight. Return as JSON:
       console.error('Error generating greeting:', error);
       const fallback = {
         greeting: `Good morning, ${userName}! Ready to make today productive?`,
-        progressInsight: 'Keep up the great work on your tasks!'
+        progressInsight: 'Keep up the great work on your tasks!',
+        quickTip: 'Start with your most important task to build momentum.'
       };
       this.setCachedResponse(cacheKey, fallback);
       return fallback;
@@ -207,9 +313,8 @@ Create a personalized greeting and progress insight. Return as JSON:
   }
 
   async generateMoodInsight(
-    moodLogs: any[],
-    currentMood: string,
-    userId: string
+    moodLogs: Array<{ mood: string; energy: number; date: Date }>,
+    currentMood: string
   ): Promise<AIMoodInsightResponse> {
     const model = this.getModel();
     if (!model) {
@@ -223,7 +328,7 @@ Create a personalized greeting and progress insight. Return as JSON:
       currentMood,
       moodCount: moodLogs.length,
       recentMoods: moodLogs.slice(0, 3).map(m => m.mood).join(',')
-    }, userId);
+    });
 
     // Check cache first
     const cached = this.getCachedResponse<AIMoodInsightResponse>(cacheKey);
@@ -231,17 +336,15 @@ Create a personalized greeting and progress insight. Return as JSON:
       return cached;
     }
 
-    const prompt = `You are InsideMentor, analyzing a student's mood patterns. 
+    const prompt = `You are a gentle and supportive AI mentor. A user just logged their mood. Based on their recent history, provide one short, non-judgmental observation (max 20 words). Notice a simple pattern (e.g., time of day, repetition) and offer a gentle reflection.
 
-User's last 7 mood entries: ${JSON.stringify(moodLogs)}
-Current mood logged: ${currentMood}
+User Data:
+{
+  "currentMood": ${JSON.stringify({ mood: currentMood, timestamp: new Date().toISOString() })},
+  "recentHistory": ${JSON.stringify(moodLogs.slice(0, 3))}
+}
 
-Provide a short, empathetic observation (2-3 sentences) about:
-- Any patterns you notice
-- Changes in mood over time
-- Suggestions for improvement if needed
-
-Return as JSON: {"observation": "string"}`;
+Return as JSON: {"observation": "string", "followUpAction": "optional suggested action"}`;
 
     try {
       const result = await this.retryAIRequest(async () => {
@@ -276,9 +379,8 @@ Return as JSON: {"observation": "string"}`;
   }
 
   async sortTasksByMood(
-    taskList: any[],
-    moodLogs: any[],
-    userId: string
+    taskList: Array<{ id: string; title: string; priority: string; status: string }>,
+    moodLogs: Array<{ mood: string; energy: number; date: Date }>
   ): Promise<AITaskSortResponse> {
     const model = this.getModel();
     if (!model) {
@@ -317,7 +419,7 @@ Return ONLY a JSON array of task IDs in the recommended order: {"sortedTasks": [
     }
   }
 
-  async breakDownTask(taskTitle: string, userId: string): Promise<AITaskBreakdownResponse> {
+  async breakDownTask(taskTitle: string): Promise<AITaskBreakdownResponse> {
     const model = this.getModel();
     if (!model) {
       return {
@@ -364,8 +466,7 @@ Return as JSON: {"subtasks": ["subtask1", "subtask2", ...]}`;
 
   async generateJournalFeedback(
     currentEntry: string,
-    pastEntries: string[],
-    userId: string
+    pastEntries: string[]
   ): Promise<AIJournalFeedbackResponse> {
     const model = this.getModel();
     if (!model) {
@@ -410,15 +511,140 @@ Return as JSON: {"feedback": "string"}`;
     }
   }
 
+  async generateProgressReport(
+    moodEntries: Array<{ mood: string; energy: number; date: Date }>,
+    tasks: Array<{ title: string; status: string; priority: string }>,
+    journalEntries: Array<{ content: string; date: Date }>
+  ): Promise<AIProgressReportResponse> {
+    const model = this.getModel();
+    if (!model) {
+      return {
+        moodTrend: 'Your mood has been stable recently.',
+        productivityInsight: 'You\'ve been making good progress on your tasks.',
+        journalThemes: 'Your journal entries show thoughtful reflection.',
+        recommendations: ['Keep up the great work!', 'Consider setting daily goals.']
+      };
+    }
+
+    const prompt = `You are InsideMentor, analyzing a student's progress data. Generate insights and recommendations.
+
+Data:
+- Mood entries: ${JSON.stringify(moodEntries.slice(0, 7))}
+- Tasks: ${JSON.stringify(tasks.slice(0, 10))}
+- Journal entries: ${JSON.stringify(journalEntries.slice(0, 5))}
+
+Provide analysis in JSON format:
+{
+  "moodTrend": "brief mood pattern analysis",
+  "productivityInsight": "task completion and productivity insights",
+  "journalThemes": "recurring themes from journal entries",
+  "recommendations": ["actionable recommendation 1", "actionable recommendation 2"]
+}`;
+
+    try {
+      const result = await this.retryAIRequest(async () => {
+        return await model.generateContent(prompt);
+      });
+      const response = await result.response;
+      const text = response.text();
+      
+      const cleanedText = this.cleanAIResponse(text);
+      try {
+        return JSON.parse(cleanedText);
+      } catch (parseError) {
+        console.error('JSON parse error, using fallback:', parseError);
+        return {
+          moodTrend: 'Your mood has been stable recently.',
+          productivityInsight: 'You\'ve been making good progress on your tasks.',
+          journalThemes: 'Your journal entries show thoughtful reflection.',
+          recommendations: ['Keep up the great work!', 'Consider setting daily goals.']
+        };
+      }
+    } catch (error) {
+      console.error('Error generating progress report:', error);
+      return {
+        moodTrend: 'Your mood has been stable recently.',
+        productivityInsight: 'You\'ve been making good progress on your tasks.',
+        journalThemes: 'Your journal entries show thoughtful reflection.',
+        recommendations: ['Keep up the great work!', 'Consider setting daily goals.']
+      };
+    }
+  }
+
+  async generateWeeklyReport(
+    weeklyData: {
+      moodEntries: Array<{ mood: string; energy: number; date: Date }>;
+      tasks: Array<{ title: string; status: string; priority: string }>;
+      journalEntries: Array<{ content: string; date: Date }>;
+    }
+  ): Promise<AIWeeklyReportResponse> {
+    const model = this.getModel();
+    if (!model) {
+      return {
+        summary: 'You had a productive week with good emotional balance.',
+        moodAnalysis: 'Your mood remained positive throughout the week.',
+        taskAnalysis: 'You completed most of your planned tasks.',
+        journalInsights: 'Your journal entries show growth and self-reflection.',
+        nextWeekGoals: ['Set specific daily goals', 'Maintain your positive momentum']
+      };
+    }
+
+    const prompt = `You are InsideMentor, generating a weekly progress report. Analyze the following data and provide insights.
+
+Weekly Data:
+- Mood entries: ${JSON.stringify(weeklyData.moodEntries)}
+- Tasks: ${JSON.stringify(weeklyData.tasks)}
+- Journal entries: ${JSON.stringify(weeklyData.journalEntries)}
+
+Generate a comprehensive weekly report in JSON format:
+{
+  "summary": "one-paragraph weekly summary",
+  "moodAnalysis": "detailed mood pattern analysis",
+  "taskAnalysis": "productivity and task completion analysis",
+  "journalInsights": "themes and growth patterns from journal entries",
+  "nextWeekGoals": ["specific goal 1", "specific goal 2", "specific goal 3"]
+}`;
+
+    try {
+      const result = await this.retryAIRequest(async () => {
+        return await model.generateContent(prompt);
+      });
+      const response = await result.response;
+      const text = response.text();
+      
+      const cleanedText = this.cleanAIResponse(text);
+      try {
+        return JSON.parse(cleanedText);
+      } catch (parseError) {
+        console.error('JSON parse error, using fallback:', parseError);
+        return {
+          summary: 'You had a productive week with good emotional balance.',
+          moodAnalysis: 'Your mood remained positive throughout the week.',
+          taskAnalysis: 'You completed most of your planned tasks.',
+          journalInsights: 'Your journal entries show growth and self-reflection.',
+          nextWeekGoals: ['Set specific daily goals', 'Maintain your positive momentum']
+        };
+      }
+    } catch (error) {
+      console.error('Error generating weekly report:', error);
+      return {
+        summary: 'You had a productive week with good emotional balance.',
+        moodAnalysis: 'Your mood remained positive throughout the week.',
+        taskAnalysis: 'You completed most of your planned tasks.',
+        journalInsights: 'Your journal entries show growth and self-reflection.',
+        nextWeekGoals: ['Set specific daily goals', 'Maintain your positive momentum']
+      };
+    }
+  }
+
   async generateMentorResponse(
     userMessage: string,
     contextData: {
       latestMood: string;
-      tasks: any[];
+      tasks: Array<{ title: string; status: string; priority: string }>;
       lastJournalEntry: string;
       streak: number;
-    },
-    userId: string
+    }
   ): Promise<AIMentorResponse> {
     const model = this.getModel();
     if (!model) {
@@ -427,21 +653,19 @@ Return as JSON: {"feedback": "string"}`;
       };
     }
 
-    const prompt = `You are InsideMentor, an empathetic AI mentor for academic wellness. 
+    const prompt = `You are InsideMentor – an emotionally intelligent AI guide for coaching students under pressure. Your role is to provide empathetic, judgment-free, and personalized guidance that blends emotional and academic support.
 
-Context about the student:
-- Latest mood: ${contextData.latestMood}
-- Recent tasks: ${JSON.stringify(contextData.tasks)}
-- Last journal entry: "${contextData.lastJournalEntry}"
-- Current streak: ${contextData.streak} days
+Current Context:
+User Message: "${userMessage}"
+Mood Trends: ${contextData.latestMood}
+Pending Tasks: ${JSON.stringify(contextData.tasks)}
+Journal Themes: "${contextData.lastJournalEntry}"
 
-Student's message: "${userMessage}"
-
-Respond as InsideMentor (2-3 sentences):
-- Be empathetic and supportive
-- Reference their context when relevant
-- Offer practical advice or encouragement
-- Maintain an academic wellness focus
+Your Responsibilities:
+- Understand the underlying emotion and immediate concern
+- Respond only to what the student seems to need right now
+- Suggest small, achievable next steps (emotionally or academically)
+- Never pressure. Always empower gently
 
 Return as JSON: {"response": "string"}`;
 

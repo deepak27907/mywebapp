@@ -8,8 +8,7 @@ import {
   TrendingUp, 
   Bot,
   Menu,
-  X,
-  GraduationCap
+  X
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 

@@ -17,7 +17,7 @@ class AuthService {
         // Try to store user in Firebase, but don't fail if Firebase is not available
         try {
           await firebaseService.createUser(user);
-        } catch (firebaseError) {
+        } catch {
           console.log('Firebase not available, using local storage');
         }
         return { success: true, user };
@@ -35,11 +35,11 @@ class AuthService {
     try {
       const user = await studentAuthService.registerStudent(studentData);
       // Try to store user in Firebase, but don't fail if Firebase is not available
-      try {
-        await firebaseService.createUser(user);
-      } catch (firebaseError) {
-        console.log('Firebase not available, using local storage');
-      }
+              try {
+          await firebaseService.createUser(user);
+        } catch {
+          console.log('Firebase not available, using local storage');
+        }
       return { success: true, user };
     } catch (error) {
       console.error('Student registration error:', error);

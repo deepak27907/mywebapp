@@ -1,259 +1,300 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, User as UserIcon, GraduationCap } from 'lucide-react';
+import { Eye, EyeOff, BookOpen, Target, GraduationCap, Calendar } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { authService } from '../services/auth';
 import { User } from '../types';
 
 const Login: React.FC = () => {
+  const { signIn, signUp, loading } = useApp();
   const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [institute, setInstitute] = useState('');
-  const [department, setDepartment] = useState('');
-  const [year, setYear] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const { setUser } = useApp();
-  const navigate = useNavigate();
+  const [showPassword, setShowPassword] = useState(false);
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+    name: '',
+    studentId: '',
+    institute: '',
+    targetExam: '' as 'NEET' | 'JEE' | '',
+    currentStatus: '' as 'Class 11' | 'Class 12' | 'Dropper' | '',
+    targetYear: '',
+    coachingInstitute: '',
+    preferredSubjects: [] as string[]
+  });
 
-  const validateEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
-
-  const validatePassword = (password: string): boolean => {
-    return password.length >= 6;
+  const subjects = {
+    NEET: ['Physics', 'Chemistry', 'Biology', 'English', 'Hindi'],
+    JEE: ['Physics', 'Chemistry', 'Mathematics', 'English']
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    
+    if (isLogin) {
+      await signIn(formData.email, formData.password);
+    } else {
+      // Create user object for registration
+      const userData: Partial<User> = {
+        name: formData.name,
+        email: formData.email,
+        studentId: formData.studentId,
+        institute: formData.institute,
+        targetExam: formData.targetExam as 'NEET' | 'JEE',
+        currentStatus: formData.currentStatus as 'Class 11' | 'Class 12' | 'Dropper',
+        targetYear: formData.targetYear,
+        coachingInstitute: formData.coachingInstitute,
+        preferredSubjects: formData.preferredSubjects
+      };
+      
+      await signUp(formData.email, formData.password, userData);
+    }
+  };
 
-    try {
-      // Validate email and password
-      if (!validateEmail(email)) {
-        throw new Error('Please enter a valid email address.');
-      }
+  const handleSubjectToggle = (subject: string) => {
+    setFormData(prev => ({
+      ...prev,
+      preferredSubjects: prev.preferredSubjects.includes(subject)
+        ? prev.preferredSubjects.filter(s => s !== subject)
+        : [...prev.preferredSubjects, subject]
+    }));
+  };
 
-      if (!validatePassword(password)) {
-        throw new Error('Password must be at least 6 characters long.');
-      }
-
-      let result;
-
-      if (isLogin) {
-        // Login: Authenticate with email and password
-        result = await authService.signInWithEmail(email, password);
-      } else {
-        // Register: Create new user with email and password
-        const userData = {
-          name,
-          email,
-          institute,
-          department,
-          year
-        };
-        result = await authService.registerWithEmail(email, password, userData);
-      }
-
-      if (result.success && result.user) {
-        setUser(result.user);
-        setIsLoading(false);
-        navigate('/dashboard');
-      } else {
-        throw new Error(result.error || 'Authentication failed');
-      }
-    } catch (error) {
-      console.error('Authentication error:', error);
-      alert(error instanceof Error ? error.message : 'Authentication failed. Please try again.');
-      setIsLoading(false);
+  const isFormValid = () => {
+    if (isLogin) {
+      return formData.email && formData.password;
+    } else {
+      return formData.email && formData.password && formData.name && 
+             formData.targetExam && formData.currentStatus;
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center">
-          <img 
-            src="/logo_new.png" 
-            alt="InsideMentor Logo" 
-            className="w-20 h-20 rounded-3xl shadow-xl"
-          />
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center mb-4">
+            <BookOpen className="w-8 h-8 text-blue-600 mr-2" />
+            <h1 className="text-2xl font-bold text-gray-900">InsideMentor</h1>
+          </div>
+          <p className="text-gray-600">
+            {isLogin ? 'Welcome back!' : 'Join your academic wellness journey'}
+          </p>
         </div>
-        <div className="mt-4 text-center">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">InsideMentor</h1>
-          <p className="text-sm text-gray-600 mt-1">AI-Powered Academic Wellness</p>
-        </div>
-        <h2 className="mt-6 text-center text-3xl font-bold text-gray-900">
-          {isLogin ? 'Sign In' : 'Create Account'}
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
-          {isLogin ? "Don't have an account? " : 'Already have an account? '}
-          <button
-            onClick={() => setIsLogin(!isLogin)}
-            className="font-medium text-blue-600 hover:text-blue-500 transition-colors duration-200"
-          >
-            {isLogin ? 'Sign Up' : 'Sign In'}
-          </button>
-        </p>
-      </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow-lg sm:rounded-xl sm:px-10">
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email Address
-              </label>
-              <div className="mt-1 relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Mail className="h-5 w-5 text-gray-400" />
-                </div>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {!isLogin && (
+            <>
+              {/* Basic Information */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Full Name *
+                </label>
                 <input
-                  id="email"
-                  name="email"
-                  type="email"
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter your full name"
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your email address"
-                  className="appearance-none block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 />
               </div>
-            </div>
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Password
-              </label>
-              <div className="mt-1 relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-gray-400" />
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Student ID (Optional)
+                </label>
                 <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  className="appearance-none block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  type="text"
+                  value={formData.studentId}
+                  onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Your school/college ID"
                 />
-                <p className="mt-1 text-xs text-gray-500">
-                  Password must be at least 6 characters long
-                </p>
               </div>
-            </div>
 
-            {!isLogin && (
-              <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  School/College Name
+                </label>
+                <input
+                  type="text"
+                  value={formData.institute}
+                  onChange={(e) => setFormData({ ...formData, institute: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Your school or college name"
+                />
+              </div>
+
+              {/* Target Exam Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+                  <Target className="w-4 h-4 mr-2" />
+                  Target Exam *
+                </label>
+                <select
+                  value={formData.targetExam}
+                  onChange={(e) => setFormData({ 
+                    ...formData, 
+                    targetExam: e.target.value as 'NEET' | 'JEE' | '',
+                    preferredSubjects: [] // Reset subjects when exam changes
+                  })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                >
+                  <option value="">Select your target exam</option>
+                  <option value="NEET">NEET (Medical)</option>
+                  <option value="JEE">JEE (Engineering)</option>
+                </select>
+              </div>
+
+              {/* Current Status */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+                  <GraduationCap className="w-4 h-4 mr-2" />
+                  Current Status *
+                </label>
+                <select
+                  value={formData.currentStatus}
+                  onChange={(e) => setFormData({ 
+                    ...formData, 
+                    currentStatus: e.target.value as 'Class 11' | 'Class 12' | 'Dropper' | ''
+                  })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                >
+                  <option value="">Select your current status</option>
+                  <option value="Class 11">Class 11</option>
+                  <option value="Class 12">Class 12</option>
+                  <option value="Dropper">Dropper</option>
+                </select>
+              </div>
+
+              {/* Target Year */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+                  <Calendar className="w-4 h-4 mr-2" />
+                  Target Year
+                </label>
+                <select
+                  value={formData.targetYear}
+                  onChange={(e) => setFormData({ ...formData, targetYear: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select target year</option>
+                  <option value="2025">2025</option>
+                  <option value="2026">2026</option>
+                  <option value="2027">2027</option>
+                </select>
+              </div>
+
+              {/* Coaching Institute */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Coaching Institute (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={formData.coachingInstitute}
+                  onChange={(e) => setFormData({ ...formData, coachingInstitute: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Your coaching institute name"
+                />
+              </div>
+
+              {/* Preferred Subjects */}
+              {formData.targetExam && (
                 <div>
-                  <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                    Full Name
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Preferred Subjects (Optional)
                   </label>
-                  <div className="mt-1">
-                    <input
-                      id="name"
-                      name="name"
-                      type="text"
-                      required={!isLogin}
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="Enter your full name"
-                      className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
-                    />
+                  <div className="grid grid-cols-2 gap-2">
+                    {subjects[formData.targetExam as keyof typeof subjects]?.map((subject) => (
+                      <button
+                        key={subject}
+                        type="button"
+                        onClick={() => handleSubjectToggle(subject)}
+                        className={`p-2 text-sm rounded-lg border transition-colors ${
+                          formData.preferredSubjects.includes(subject)
+                            ? 'bg-blue-100 border-blue-300 text-blue-700'
+                            : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                        }`}
+                      >
+                        {subject}
+                      </button>
+                    ))}
                   </div>
                 </div>
+              )}
+            </>
+          )}
 
-                <div>
-                  <label htmlFor="institute" className="block text-sm font-medium text-gray-700">
-                    Institute
-                  </label>
-                  <div className="mt-1">
-                    <select
-                      id="institute"
-                      name="institute"
-                      value={institute}
-                      onChange={(e) => setInstitute(e.target.value)}
-                      required
-                      className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
-                    >
-                      <option value="">Select Institute</option>
-                      <option value="Tech University">Tech University</option>
-                      <option value="Engineering College">Engineering College</option>
-                      <option value="Medical Institute">Medical Institute</option>
-                      <option value="Business School">Business School</option>
-                      <option value="Arts University">Arts University</option>
-                    </select>
-                  </div>
-                </div>
+          {/* Email */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Email Address *
+            </label>
+            <input
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Enter your email"
+              required
+            />
+          </div>
 
-                <div>
-                  <label htmlFor="department" className="block text-sm font-medium text-gray-700">
-                    Department
-                  </label>
-                  <div className="mt-1">
-                    <select
-                      id="department"
-                      name="department"
-                      value={department}
-                      onChange={(e) => setDepartment(e.target.value)}
-                      required
-                      className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
-                    >
-                      <option value="">Select Department</option>
-                      <option value="Computer Science">Computer Science</option>
-                      <option value="Engineering">Engineering</option>
-                      <option value="Mathematics">Mathematics</option>
-                      <option value="Physics">Physics</option>
-                      <option value="Chemistry">Chemistry</option>
-                      <option value="Biology">Biology</option>
-                      <option value="Business Administration">Business Administration</option>
-                      <option value="Economics">Economics</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label htmlFor="year" className="block text-sm font-medium text-gray-700">
-                    Year
-                  </label>
-                  <div className="mt-1">
-                    <select
-                      id="year"
-                      name="year"
-                      value={year}
-                      onChange={(e) => setYear(e.target.value)}
-                      className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
-                    >
-                      <option value="">Select Year</option>
-                      <option value="1st Year">1st Year</option>
-                      <option value="2nd Year">2nd Year</option>
-                      <option value="3rd Year">3rd Year</option>
-                      <option value="4th Year">4th Year</option>
-                      <option value="5th Year">5th Year</option>
-                    </select>
-                  </div>
-                </div>
-              </>
-            )}
-
-            <div>
+          {/* Password */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Password *
+            </label>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter your password"
+                required
+              />
               <button
-                type="submit"
-                disabled={isLoading}
-                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
               >
-                {isLoading ? (
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  isLogin ? 'Sign In' : 'Create Account'
-                )}
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-          </form>
+          </div>
+
+          <button
+            type="submit"
+            disabled={!isFormValid() || loading}
+            className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 font-medium"
+          >
+            {loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Create Account')}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center">
+          <button
+            onClick={() => {
+              setIsLogin(!isLogin);
+              setFormData({
+                email: '',
+                password: '',
+                name: '',
+                studentId: '',
+                institute: '',
+                targetExam: '',
+                currentStatus: '',
+                targetYear: '',
+                coachingInstitute: '',
+                preferredSubjects: []
+              });
+            }}
+            className="text-blue-600 hover:text-blue-700 text-sm"
+          >
+            {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+          </button>
         </div>
       </div>
     </div>

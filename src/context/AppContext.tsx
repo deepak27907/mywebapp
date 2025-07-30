@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, Task, MoodEntry, JournalEntry, ChatMessage } from '../types';
+import { User, Task, MoodEntry, JournalEntry, ChatMessage, ChatSession } from '../types';
 import { firebaseService } from '../services/firebase';
-import { aiService } from '../services/ai';
 
 interface AppContextType {
   user: User | null;
@@ -16,10 +15,21 @@ interface AppContextType {
   journalEntries: JournalEntry[];
   addJournalEntry: (entry: Omit<JournalEntry, 'id'>) => Promise<void>;
   updateJournalEntry: (entryId: string, updates: Partial<JournalEntry>) => Promise<void>;
+  deleteJournalEntry: (entryId: string) => Promise<void>;
   chatMessages: ChatMessage[];
   addChatMessage: (message: Omit<ChatMessage, 'id'>) => Promise<void>;
+  deleteChatMessage: (messageId: string) => Promise<void>;
+  clearChatMessages: () => Promise<void>;
+  chatSessions: ChatSession[];
+  addChatSession: (session: Omit<ChatSession, 'id'>) => Promise<void>;
+  updateChatSession: (sessionId: string, updates: Partial<ChatSession>) => Promise<void>;
+  deleteChatSession: (sessionId: string) => Promise<void>;
   isAuthenticated: boolean;
   loading: boolean;
+  // Authentication methods
+  signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string, userData: Partial<User>) => Promise<void>;
+  signOut: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -34,43 +44,68 @@ export const useApp = () => {
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [moodEntries, setMoodEntries] = useState<MoodEntry[]>([]);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
 
   const isAuthenticated = !!user;
 
-  // Load data from Firebase when user is authenticated
+  // Initialize authentication state
+  useEffect(() => {
+    const unsubscribe = firebaseService.onAuthStateChanged(async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const userData = await firebaseService.getUser(firebaseUser.uid);
+          if (userData) {
+            setUser(userData);
+          }
+        } catch (error) {
+          console.error('Error loading user data:', error);
+        }
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Load user data when user changes
   useEffect(() => {
     const loadUserData = async () => {
-      if (isAuthenticated && user) {
-        setLoading(true);
+      if (user) {
         try {
-          // Clear AI cache when user logs in to get fresh suggestions
-          aiService.clearCache();
-          
-          const [tasksData, moodData, journalData, chatData] = await Promise.all([
+          const [userTasks, userMoodEntries, userJournalEntries, userChatMessages, userChatSessions] = await Promise.all([
             firebaseService.getTasks(user.id),
             firebaseService.getMoodEntries(user.id),
             firebaseService.getJournalEntries(user.id),
-            firebaseService.getChatMessages(user.id)
+            firebaseService.getChatMessages(user.id),
+            firebaseService.getChatSessions(user.id)
           ]);
-          setTasks(tasksData);
-          setMoodEntries(moodData);
-          setJournalEntries(journalData);
-          setChatMessages(chatData);
+          
+          setTasks(userTasks);
+          setMoodEntries(userMoodEntries);
+          setJournalEntries(userJournalEntries);
+          setChatMessages(userChatMessages);
+          setChatSessions(userChatSessions);
         } catch (error) {
           console.error('Error loading user data:', error);
-        } finally {
-          setLoading(false);
         }
+      } else {
+        setTasks([]);
+        setMoodEntries([]);
+        setJournalEntries([]);
+        setChatMessages([]);
+        setChatSessions([]);
       }
     };
 
     loadUserData();
-  }, [isAuthenticated, user]);
+  }, [user]);
 
   const addTask = async (task: Omit<Task, 'id'>) => {
     if (!user) return;
@@ -139,8 +174,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const deleteJournalEntry = async (entryId: string) => {
+    try {
+      await firebaseService.deleteJournalEntry(entryId);
+      setJournalEntries(prev => prev.filter(entry => entry.id !== entryId));
+    } catch (error) {
+      console.error('Error deleting journal entry:', error);
+    }
+  };
+
   const addChatMessage = async (message: Omit<ChatMessage, 'id'>) => {
-    if (!user) return;
+    if (!user) {
+      console.warn('Cannot add chat message: user not authenticated');
+      return;
+    }
+    
     try {
       const messageWithUserId = { ...message, userId: user.id };
       const messageId = await firebaseService.addChatMessage(messageWithUserId);
@@ -148,6 +196,136 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setChatMessages(prev => [...prev, newMessage]);
     } catch (error) {
       console.error('Error adding chat message:', error);
+      
+      // Provide user-friendly error message
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('permission') || errorMessage.includes('Missing or insufficient permissions')) {
+        console.warn('Firebase permissions issue - message saved locally');
+        // Still add the message locally for better UX
+        const localMessageId = Date.now().toString();
+        const newMessage = { ...message, id: localMessageId };
+        setChatMessages(prev => [...prev, newMessage]);
+      } else {
+        // For other errors, show a user-friendly notification
+        console.error('Failed to save chat message:', error);
+      }
+    }
+  };
+
+  const deleteChatMessage = async (messageId: string) => {
+    if (!user) return;
+    
+    try {
+      await firebaseService.deleteChatMessage(messageId);
+      setChatMessages(prev => prev.filter(msg => msg.id !== messageId));
+    } catch (error) {
+      console.error('Error deleting chat message:', error);
+    }
+  };
+
+  const clearChatMessages = async () => {
+    if (!user) return;
+    
+    try {
+      await firebaseService.clearChatMessages(user.id);
+      setChatMessages([]);
+    } catch (error) {
+      console.error('Error clearing chat messages:', error);
+    }
+  };
+
+  const addChatSession = async (session: Omit<ChatSession, 'id'>) => {
+    if (!user) return;
+    
+    try {
+      const sessionWithUserId = { ...session, userId: user.id };
+      const sessionId = await firebaseService.addChatSession(sessionWithUserId);
+      const newSession = { ...session, id: sessionId };
+      setChatSessions(prev => [...prev, newSession]);
+    } catch (error) {
+      console.error('Error adding chat session:', error);
+    }
+  };
+
+  const updateChatSession = async (sessionId: string, updates: Partial<ChatSession>) => {
+    if (!user) return;
+    
+    try {
+      await firebaseService.updateChatSession(sessionId, updates);
+      setChatSessions(prev => 
+        prev.map(session => 
+          session.id === sessionId ? { ...session, ...updates } : session
+        )
+      );
+    } catch (error) {
+      console.error('Error updating chat session:', error);
+    }
+  };
+
+  const deleteChatSession = async (sessionId: string) => {
+    if (!user) return;
+    
+    try {
+      await firebaseService.deleteChatSession(sessionId);
+      setChatSessions(prev => prev.filter(session => session.id !== sessionId));
+    } catch (error) {
+      console.error('Error deleting chat session:', error);
+    }
+  };
+
+  // Authentication methods
+  const signIn = async (email: string, password: string) => {
+    setLoading(true);
+    try {
+      const firebaseUser = await firebaseService.signInWithEmailAndPassword(email, password);
+      const userData = await firebaseService.getUser(firebaseUser.uid);
+      if (userData) {
+        setUser(userData);
+      } else {
+        throw new Error('User data not found');
+      }
+    } catch (error) {
+      console.error('Sign in error:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signUp = async (email: string, password: string, userData: Partial<User>) => {
+    setLoading(true);
+    try {
+      const firebaseUser = await firebaseService.createUserWithEmailAndPassword(email, password);
+      const newUser: User = {
+        id: firebaseUser.uid,
+        name: userData.name || '',
+        email: email,
+        ...userData
+      };
+      await firebaseService.createUser(newUser);
+      setUser(newUser);
+    } catch (error) {
+      console.error('Sign up error:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signOut = async () => {
+    setLoading(true);
+    try {
+      await firebaseService.signOut();
+      setUser(null);
+      setTasks([]);
+      setMoodEntries([]);
+      setJournalEntries([]);
+      setChatMessages([]);
+    } catch (error) {
+      console.error('Sign out error:', error);
+      throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -166,10 +344,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         journalEntries,
         addJournalEntry,
         updateJournalEntry,
+        deleteJournalEntry,
         chatMessages,
         addChatMessage,
+        deleteChatMessage,
+        clearChatMessages,
+        chatSessions,
+        addChatSession,
+        updateChatSession,
+        deleteChatSession,
         isAuthenticated,
-        loading
+        loading,
+        signIn,
+        signUp,
+        signOut
       }}
     >
       {children}

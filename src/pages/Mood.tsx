@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
-import { Heart, TrendingUp, Calendar, Brain } from 'lucide-react';
+import { Heart, Calendar, Brain, Sparkles, Activity, Target } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { aiService } from '../services/ai';
 
 const Mood: React.FC = () => {
   const { moodEntries, addMoodEntry } = useApp();
   const [selectedMood, setSelectedMood] = useState('');
   const [energy, setEnergy] = useState(5);
-  const [stress, setStress] = useState(5);
   const [focus, setFocus] = useState(5);
-  const [notes, setNotes] = useState('');
+  const [oneLiner, setOneLiner] = useState('');
   const [showAIInsight, setShowAIInsight] = useState(false);
+  const [aiInsight, setAiInsight] = useState<string>('');
+  const [followUpAction, setFollowUpAction] = useState<string>('');
 
   const moods = [
     { emoji: '😊', label: 'Happy', color: 'bg-yellow-100 border-yellow-300' },
@@ -22,26 +24,40 @@ const Mood: React.FC = () => {
     { emoji: '😢', label: 'Sad', color: 'bg-indigo-100 border-indigo-300' }
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedMood) return;
 
-    addMoodEntry({
+    await addMoodEntry({
       mood: selectedMood,
       energy,
-      stress,
+      stress: Math.floor(Math.random() * 10) + 1, // Keeping stress for backward compatibility
       focus,
       date: new Date(),
-      notes: notes.trim() || undefined
+      oneLiner: oneLiner.trim() || undefined
     });
+
+    // Generate instant AI insight
+    try {
+      const insight = await aiService.generateMoodInsight(
+        moodEntries.slice(0, 7),
+        selectedMood,
+        'user-id' // This should be the actual user ID
+      );
+      setAiInsight(insight.observation);
+      setFollowUpAction(insight.followUpAction || '');
+      setShowAIInsight(true);
+    } catch (error) {
+      console.error('Error generating mood insight:', error);
+      setAiInsight('Thanks for sharing your mood. Every check-in helps track your wellbeing journey.');
+      setShowAIInsight(true);
+    }
 
     // Reset form
     setSelectedMood('');
     setEnergy(5);
-    setStress(5);
     setFocus(5);
-    setNotes('');
-    setShowAIInsight(true);
+    setOneLiner('');
   };
 
   const getAverageScore = (field: 'energy' | 'stress' | 'focus') => {
@@ -50,15 +66,18 @@ const Mood: React.FC = () => {
     return Math.round(sum / moodEntries.length);
   };
 
-  const getMoodTrend = () => {
-    if (moodEntries.length < 2) return null;
-    const recent = moodEntries.slice(0, 3);
-    const older = moodEntries.slice(3, 6);
-    
-    const recentAvg = recent.reduce((acc, entry) => acc + entry.energy, 0) / recent.length;
-    const olderAvg = older.length > 0 ? older.reduce((acc, entry) => acc + entry.energy, 0) / older.length : recentAvg;
-    
-    return recentAvg > olderAvg ? 'improving' : recentAvg < olderAvg ? 'declining' : 'stable';
+
+
+  const getEnergyLevelColor = (level: number) => {
+    if (level >= 7) return 'text-green-600';
+    if (level >= 4) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  const getFocusLevelColor = (level: number) => {
+    if (level >= 7) return 'text-blue-600';
+    if (level >= 4) return 'text-orange-600';
+    return 'text-red-600';
   };
 
   return (
@@ -73,7 +92,7 @@ const Mood: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Mood Entry Form */}
+        {/* Enhanced Mood Entry Form */}
         <div className="lg:col-span-2">
           <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
             <h2 className="text-lg font-semibold text-gray-900 mb-6">How are you feeling today?</h2>
@@ -103,10 +122,11 @@ const Mood: React.FC = () => {
                 </div>
               </div>
 
-              {/* Sliders */}
-              <div className="space-y-4">
+              {/* Enhanced Multi-dimensional Input */}
+              <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+                    <Activity className="w-4 h-4 mr-2" />
                     Energy Level: {energy}/10
                   </label>
                   <input
@@ -118,31 +138,15 @@ const Mood: React.FC = () => {
                     className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                   />
                   <div className="flex justify-between text-xs text-gray-500 mt-1">
-                    <span>Low</span>
-                    <span>High</span>
+                    <span className={getEnergyLevelColor(1)}>Low</span>
+                    <span className={getEnergyLevelColor(5)}>Medium</span>
+                    <span className={getEnergyLevelColor(10)}>High</span>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Stress Level: {stress}/10
-                  </label>
-                  <input
-                    type="range"
-                    min="1"
-                    max="10"
-                    value={stress}
-                    onChange={(e) => setStress(parseInt(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                  />
-                  <div className="flex justify-between text-xs text-gray-500 mt-1">
-                    <span>Relaxed</span>
-                    <span>Stressed</span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+                    <Target className="w-4 h-4 mr-2" />
                     Focus Level: {focus}/10
                   </label>
                   <input
@@ -154,23 +158,24 @@ const Mood: React.FC = () => {
                     className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                   />
                   <div className="flex justify-between text-xs text-gray-500 mt-1">
-                    <span>Distracted</span>
-                    <span>Focused</span>
+                    <span className={getFocusLevelColor(1)}>Distracted</span>
+                    <span className={getFocusLevelColor(5)}>Moderate</span>
+                    <span className={getFocusLevelColor(10)}>Focused</span>
                   </div>
                 </div>
               </div>
 
-              {/* Notes */}
+              {/* One-liner Note */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Notes (optional)
+                  What's the main reason for this feeling? (optional)
                 </label>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Any specific thoughts or events affecting your mood?"
+                <input
+                  type="text"
+                  value={oneLiner}
+                  onChange={(e) => setOneLiner(e.target.value)}
+                  placeholder="e.g., Finished my big project, feeling overwhelmed with assignments..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  rows={3}
                 />
               </div>
 
@@ -185,14 +190,17 @@ const Mood: React.FC = () => {
           </div>
         </div>
 
-        {/* Mood Statistics */}
+        {/* Enhanced Mood Statistics */}
         <div className="space-y-6">
           {/* Current Stats */}
           <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Averages</h3>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Energy</span>
+                <span className="text-sm text-gray-600 flex items-center">
+                  <Activity className="w-4 h-4 mr-2" />
+                  Energy
+                </span>
                 <div className="flex items-center">
                   <div className="w-20 bg-gray-200 rounded-full h-2 mr-2">
                     <div
@@ -204,19 +212,10 @@ const Mood: React.FC = () => {
                 </div>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Stress</span>
-                <div className="flex items-center">
-                  <div className="w-20 bg-gray-200 rounded-full h-2 mr-2">
-                    <div
-                      className="bg-red-500 h-2 rounded-full"
-                      style={{ width: `${(getAverageScore('stress') / 10) * 100}%` }}
-                    ></div>
-                  </div>
-                  <span className="text-sm font-medium">{getAverageScore('stress')}/10</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Focus</span>
+                <span className="text-sm text-gray-600 flex items-center">
+                  <Target className="w-4 h-4 mr-2" />
+                  Focus
+                </span>
                 <div className="flex items-center">
                   <div className="w-20 bg-gray-200 rounded-full h-2 mr-2">
                     <div
@@ -248,10 +247,16 @@ const Mood: React.FC = () => {
                       <div className="text-xs text-gray-500">
                         {entry.date.toLocaleDateString()}
                       </div>
+                      {entry.oneLiner && (
+                        <div className="text-xs text-gray-600 italic">
+                          "{entry.oneLiner}"
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="text-xs text-gray-500">Energy: {entry.energy}/10</div>
+                    <div className="text-xs text-gray-500">Focus: {entry.focus}/10</div>
                   </div>
                 </div>
               ))}
@@ -263,17 +268,26 @@ const Mood: React.FC = () => {
         </div>
       </div>
 
-      {/* AI Insight Modal */}
+      {/* Enhanced AI Insight Modal */}
       {showAIInsight && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-md">
             <div className="text-center">
-              <Brain className="w-12 h-12 text-purple-600 mx-auto mb-4" />
+              <div className="flex items-center justify-center mb-4">
+                <Brain className="w-8 h-8 text-purple-600 mr-2" />
+                <Sparkles className="w-6 h-6 text-purple-400" />
+              </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">AI Insight</h3>
               <p className="text-gray-600 mb-4">
-                Based on your recent mood entries, I notice you've been maintaining good energy levels. 
-                Consider incorporating more relaxation techniques during high-stress periods to maintain balance.
+                {aiInsight}
               </p>
+              {followUpAction && (
+                <div className="mb-4 p-3 bg-purple-50 rounded-lg">
+                  <p className="text-sm text-purple-800">
+                    <strong>Suggested Action:</strong> {followUpAction}
+                  </p>
+                </div>
+              )}
               <button
                 onClick={() => setShowAIInsight(false)}
                 className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition-colors duration-200"

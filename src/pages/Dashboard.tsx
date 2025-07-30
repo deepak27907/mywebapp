@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckSquare, Heart, TrendingUp, Plus, ChevronRight, Sparkles } from 'lucide-react';
+import { CheckSquare, Heart, Plus, ChevronRight, Sparkles, Flame, Target, MessageCircle } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { aiService } from '../services/ai';
 
@@ -8,9 +8,12 @@ const Dashboard: React.FC = () => {
   const { user, tasks, moodEntries, addMoodEntry, loading } = useApp();
   const [selectedMood, setSelectedMood] = useState('');
   const [energyLevel, setEnergyLevel] = useState(5);
+  const [focusLevel, setFocusLevel] = useState(5);
+  const [oneLiner, setOneLiner] = useState('');
   const [hasMoodCheckedIn, setHasMoodCheckedIn] = useState(false);
-  const [aiGreeting, setAiGreeting] = useState<{ greeting: string; progressInsight: string } | null>(null);
+  const [aiGreeting, setAiGreeting] = useState<{ greeting: string; progressInsight: string; quickTip: string } | null>(null);
   const [moodInsight, setMoodInsight] = useState<string | null>(null);
+  const [showQuickTip, setShowQuickTip] = useState(true);
 
   const moods = [
     { emoji: '😊', label: 'Happy' },
@@ -26,6 +29,58 @@ const Dashboard: React.FC = () => {
   const recentCompletedTasks = tasks.filter(task => task.status === 'done').slice(0, 3);
   const recentMoodLogs = moodEntries.slice(0, 7);
 
+  // Check if user has checked in today
+  const hasCheckedInToday = () => {
+    const today = new Date().toDateString();
+    return moodEntries.some(entry => new Date(entry.date).toDateString() === today);
+  };
+
+  // Get contextual action based on current state
+  const getContextualAction = () => {
+    if (!hasCheckedInToday()) {
+      return {
+        title: 'Mood Check-in',
+        description: 'How are you feeling today?',
+        action: 'mood',
+        icon: Heart,
+        color: 'bg-red-500'
+      };
+    }
+    
+    const urgentTasks = tasks.filter(task => 
+      task.priority === 'high' && task.status !== 'done'
+    );
+    
+    if (urgentTasks.length > 0) {
+      return {
+        title: 'Urgent Tasks',
+        description: `${urgentTasks.length} high-priority tasks need attention`,
+        action: 'tasks',
+        icon: Target,
+        color: 'bg-orange-500'
+      };
+    }
+
+    const lastMood = moodEntries[0];
+    if (lastMood && ['Stressed', 'Frustrated', 'Tired'].includes(lastMood.mood)) {
+      return {
+        title: 'Talk to AI Mentor',
+        description: 'Feeling down? Let\'s chat about it',
+        action: 'mentor',
+        icon: MessageCircle,
+        color: 'bg-purple-500'
+      };
+    }
+
+    return {
+      title: 'Add Task',
+      description: 'What would you like to accomplish today?',
+      action: 'tasks',
+      icon: Plus,
+      color: 'bg-blue-500'
+    };
+  };
+
   // Generate AI greeting on component mount
   useEffect(() => {
     const generateGreeting = async () => {
@@ -34,8 +89,7 @@ const Dashboard: React.FC = () => {
           const greeting = await aiService.generateDashboardGreeting(
             user.name,
             recentCompletedTasks,
-            recentMoodLogs,
-            user.id
+            recentMoodLogs
           );
           setAiGreeting(greeting);
         } catch (error) {
@@ -45,7 +99,7 @@ const Dashboard: React.FC = () => {
     };
 
     generateGreeting();
-  }, [user, loading, tasks, moodEntries]);
+  }, [user, loading, tasks, moodEntries, recentCompletedTasks, recentMoodLogs]);
 
   const handleMoodCheckIn = async () => {
     if (selectedMood) {
@@ -53,8 +107,9 @@ const Dashboard: React.FC = () => {
         mood: selectedMood,
         energy: energyLevel,
         stress: Math.floor(Math.random() * 10) + 1,
-        focus: Math.floor(Math.random() * 10) + 1,
-        date: new Date()
+        focus: focusLevel,
+        date: new Date(),
+        oneLiner: oneLiner.trim() || undefined
       });
       setHasMoodCheckedIn(true);
 
@@ -62,8 +117,7 @@ const Dashboard: React.FC = () => {
       try {
         const insight = await aiService.generateMoodInsight(
           recentMoodLogs,
-          selectedMood,
-          user?.id || ''
+          selectedMood
         );
         setMoodInsight(insight.observation);
       } catch (error) {
@@ -79,12 +133,14 @@ const Dashboard: React.FC = () => {
     return 'Good evening';
   };
 
+  const contextualAction = getContextualAction();
+
   return (
-    <div className="space-y-8">
-      {/* Welcome Section */}
+    <div className="space-y-6">
+      {/* Enhanced Welcome Section */}
       <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
         <div className="flex items-start justify-between">
-          <div>
+          <div className="flex-1">
             <h1 className="text-2xl font-bold text-gray-900 mb-2">
               {aiGreeting ? aiGreeting.greeting : `${getTimeGreeting()}, ${user?.name}! 👋`}
             </h1>
@@ -99,9 +155,6 @@ const Dashboard: React.FC = () => {
               <p><strong>Institute:</strong> {user?.institute} • <strong>Department:</strong> {user?.department}</p>
               <p><strong>Year:</strong> {user?.year}</p>
             </div>
-            <p className="text-gray-600">
-              Ready to make today productive? Let's start with a quick mood check-in.
-            </p>
           </div>
           {aiGreeting && (
             <div className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded">
@@ -111,8 +164,50 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
+      {/* Contextual Action Card */}
+      <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center">
+            <div className={`w-12 h-12 ${contextualAction.color} rounded-lg flex items-center justify-center mr-4`}>
+              <contextualAction.icon className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">{contextualAction.title}</h2>
+              <p className="text-gray-600">{contextualAction.description}</p>
+            </div>
+          </div>
+          <Link
+            to={`/${contextualAction.action}`}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
+          >
+            {contextualAction.action === 'mood' ? 'Check In' : 'View'}
+          </Link>
+        </div>
+      </div>
+
+      {/* Quick Tip Card */}
+      {aiGreeting?.quickTip && showQuickTip && (
+        <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4 border border-blue-200">
+          <div className="flex items-start justify-between">
+            <div className="flex items-start">
+              <Sparkles className="w-5 h-5 text-blue-600 mr-3 mt-0.5" />
+              <div>
+                <h3 className="text-sm font-medium text-blue-900 mb-1">Quick Tip</h3>
+                <p className="text-sm text-blue-800">{aiGreeting.quickTip}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowQuickTip(false)}
+              className="text-blue-600 hover:text-blue-700 text-sm"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Mood Check-in */}
+        {/* Enhanced Mood Check-in */}
         <div className="lg:col-span-2">
           <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
@@ -148,15 +243,41 @@ const Dashboard: React.FC = () => {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-600 mb-2">Energy Level: {energyLevel}/10</p>
+                    <input
+                      type="range"
+                      min="1"
+                      max="10"
+                      value={energyLevel}
+                      onChange={(e) => setEnergyLevel(parseInt(e.target.value))}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600 mb-2">Focus Level: {focusLevel}/10</p>
+                    <input
+                      type="range"
+                      min="1"
+                      max="10"
+                      value={focusLevel}
+                      onChange={(e) => setFocusLevel(parseInt(e.target.value))}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                    />
+                  </div>
+                </div>
+
                 <div>
-                  <p className="text-sm text-gray-600 mb-2">Energy Level: {energyLevel}/10</p>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    What's the main reason for this feeling? (optional)
+                  </label>
                   <input
-                    type="range"
-                    min="1"
-                    max="10"
-                    value={energyLevel}
-                    onChange={(e) => setEnergyLevel(parseInt(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                    type="text"
+                    value={oneLiner}
+                    onChange={(e) => setOneLiner(e.target.value)}
+                    placeholder="e.g., Finished my big project"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
 
@@ -192,11 +313,11 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Progress Snapshot */}
+        {/* Enhanced Progress Snapshot */}
         <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
           <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <TrendingUp className="w-5 h-5 mr-2 text-green-500" />
-            Today's Progress
+            <Flame className="w-5 h-5 mr-2 text-orange-500" />
+            Progress Snapshot
           </h2>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -221,12 +342,12 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Today's Tasks */}
+      {/* Today's Priorities */}
       <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900 flex items-center">
             <CheckSquare className="w-5 h-5 mr-2 text-blue-500" />
-            Today's Focus (Top 3)
+            Today's Priorities (Top 3)
           </h2>
           <Link
             to="/tasks"
