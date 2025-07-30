@@ -28,23 +28,37 @@ const Login: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (isLogin) {
-      await signIn(formData.email, formData.password);
-    } else {
-      // Create user object for registration
-      const userData: Partial<User> = {
-        name: formData.name,
-        email: formData.email,
-        studentId: formData.studentId,
-        institute: formData.institute,
-        targetExam: formData.targetExam as 'NEET' | 'JEE',
-        currentStatus: formData.currentStatus as 'Class 11' | 'Class 12' | 'Dropper',
-        targetYear: formData.targetYear,
-        coachingInstitute: formData.coachingInstitute,
-        preferredSubjects: formData.preferredSubjects
-      };
+    try {
+      if (isLogin) {
+        await signIn(formData.email, formData.password);
+      } else {
+        // Create user object for registration
+        const userData: Partial<User> = {
+          name: formData.name,
+          email: formData.email,
+          studentId: formData.studentId,
+          institute: formData.institute,
+          targetExam: formData.targetExam as 'NEET' | 'JEE',
+          currentStatus: formData.currentStatus as 'Class 11' | 'Class 12' | 'Dropper',
+          targetYear: formData.targetYear,
+          coachingInstitute: formData.coachingInstitute,
+          preferredSubjects: formData.preferredSubjects
+        };
+        
+        await signUp(formData.email, formData.password, userData);
+      }
+    } catch (error) {
+      console.error('Authentication error:', error);
       
-      await signUp(formData.email, formData.password, userData);
+      // Show user-friendly error message
+      const errorMessage = error instanceof Error ? error.message : 'Authentication failed';
+      
+      // Check if it's a Firebase configuration error
+      if (errorMessage.includes('Firebase not configured') || errorMessage.includes('Firebase not available')) {
+        alert('⚠️ Firebase is not configured. The app will work in offline mode. Please contact the administrator to set up Firebase.');
+      } else {
+        alert(`❌ ${errorMessage}`);
+      }
     }
   };
 

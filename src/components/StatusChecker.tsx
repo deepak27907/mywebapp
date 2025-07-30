@@ -1,56 +1,76 @@
 import React from 'react';
-import { useApp } from '../context/AppContext';
+import { CheckCircle, AlertCircle, Info, Bug } from 'lucide-react';
 
 const StatusChecker: React.FC = () => {
-  const { user, tasks, moodEntries, journalEntries, loading } = useApp();
+  const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_API_KEY && 
+                               import.meta.env.VITE_FIREBASE_API_KEY !== 'your_firebase_api_key_here';
+  const isGeminiConfigured = import.meta.env.VITE_GEMINI_API_KEY && 
+                             import.meta.env.VITE_GEMINI_API_KEY !== 'your_gemini_api_key_here';
+
+  // Debug information (safe to show)
+  const debugInfo = {
+    hasFirebaseKey: !!import.meta.env.VITE_FIREBASE_API_KEY,
+    hasFirebaseDomain: !!import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+    hasFirebaseProjectId: !!import.meta.env.VITE_FIREBASE_PROJECT_ID,
+    hasGeminiKey: !!import.meta.env.VITE_GEMINI_API_KEY,
+    firebaseKeyLength: import.meta.env.VITE_FIREBASE_API_KEY?.length || 0,
+    geminiKeyLength: import.meta.env.VITE_GEMINI_API_KEY?.length || 0
+  };
 
   return (
-    <div className="fixed bottom-4 right-4 bg-white p-4 rounded-lg shadow-lg border max-w-sm">
-      <div className="flex items-center mb-2">
-        <div className="w-6 h-6 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center mr-2">
-          <div className="text-white text-xs">🎓</div>
-        </div>
-        <h3 className="font-semibold text-sm">System Status</h3>
-      </div>
-      <div className="text-xs space-y-1">
-        <div className="flex justify-between">
-          <span>User:</span>
-          <span className={user ? 'text-green-600' : 'text-red-600'}>
-            {user ? '✅ Logged In' : '❌ Not Logged In'}
+    <div className="fixed bottom-4 right-4 bg-white rounded-lg shadow-lg p-4 border border-gray-200 max-w-sm">
+      <h3 className="text-sm font-semibold text-gray-800 mb-2">App Status</h3>
+      
+      <div className="space-y-2">
+        {/* Firebase Status */}
+        <div className="flex items-center space-x-2">
+          {isFirebaseConfigured ? (
+            <CheckCircle className="w-4 h-4 text-green-600" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-yellow-600" />
+          )}
+          <span className={`text-xs ${isFirebaseConfigured ? 'text-green-600' : 'text-yellow-600'}`}>
+            {isFirebaseConfigured ? 'Firebase: Online' : 'Firebase: Offline Mode'}
           </span>
         </div>
-        <div className="flex justify-between">
-          <span>Loading:</span>
-          <span className={loading ? 'text-yellow-600' : 'text-green-600'}>
-            {loading ? '⏳ Loading...' : '✅ Ready'}
+
+        {/* Gemini API Status */}
+        <div className="flex items-center space-x-2">
+          {isGeminiConfigured ? (
+            <CheckCircle className="w-4 h-4 text-green-600" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-yellow-600" />
+          )}
+          <span className={`text-xs ${isGeminiConfigured ? 'text-green-600' : 'text-yellow-600'}`}>
+            {isGeminiConfigured ? 'AI Mentor: Available' : 'AI Mentor: Limited'}
           </span>
         </div>
-        <div className="flex justify-between">
-          <span>Tasks:</span>
-          <span className="text-blue-600">{tasks.length} items</span>
+
+        {/* Debug Information */}
+        <div className="mt-3 p-2 bg-gray-50 rounded">
+          <div className="flex items-center space-x-2 mb-2">
+            <Bug className="w-4 h-4 text-gray-600" />
+            <span className="text-xs font-medium text-gray-700">Debug Info</span>
+          </div>
+          <div className="text-xs text-gray-600 space-y-1">
+            <div>Firebase Key: {debugInfo.hasFirebaseKey ? '✅' : '❌'} ({debugInfo.firebaseKeyLength} chars)</div>
+            <div>Firebase Domain: {debugInfo.hasFirebaseDomain ? '✅' : '❌'}</div>
+            <div>Firebase Project ID: {debugInfo.hasFirebaseProjectId ? '✅' : '❌'}</div>
+            <div>Gemini Key: {debugInfo.hasGeminiKey ? '✅' : '❌'} ({debugInfo.geminiKeyLength} chars)</div>
+          </div>
         </div>
-        <div className="flex justify-between">
-          <span>Mood Entries:</span>
-          <span className="text-blue-600">{moodEntries.length} entries</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Journal Entries:</span>
-          <span className="text-blue-600">{journalEntries.length} entries</span>
-        </div>
-        <div className="flex justify-between">
-          <span>AI API:</span>
-          <span className={import.meta.env.VITE_GEMINI_API_KEY ? 'text-green-600' : 'text-red-600'}>
-            {import.meta.env.VITE_GEMINI_API_KEY ? '✅ Configured' : '❌ Not Configured'}
-          </span>
-        </div>
-        <div className="flex justify-between">
-          <span>Firebase:</span>
-          <span className="text-yellow-600">🔄 Mock Data (No Config)</span>
-        </div>
-        <div className="flex justify-between">
-          <span>AI Status:</span>
-          <span className="text-blue-600">🔄 Retry Enabled</span>
-        </div>
+
+        {/* Info Message */}
+        {!isFirebaseConfigured && (
+          <div className="flex items-start space-x-2 mt-3 p-2 bg-blue-50 rounded">
+            <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+            <div className="text-xs text-blue-700">
+              <p className="font-medium">Offline Mode Active</p>
+              <p className="text-blue-600">Data is stored locally. Some features may be limited.</p>
+              <p className="text-blue-600 mt-1">Check Netlify environment variables if you want online mode.</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
