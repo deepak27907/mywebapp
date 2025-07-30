@@ -53,25 +53,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const isAuthenticated = !!user;
 
-  // Initialize authentication state
+  // Initialize authentication state with timeout
   useEffect(() => {
-    const unsubscribe = firebaseService.onAuthStateChanged(async (firebaseUser) => {
-      if (firebaseUser) {
-        try {
-          const userData = await firebaseService.getUser(firebaseUser.uid);
-          if (userData) {
-            setUser(userData);
-          }
-        } catch (error) {
-          console.error('Error loading user data:', error);
-        }
-      } else {
-        setUser(null);
-      }
-      setLoading(false);
-    });
+    let timeoutId: NodeJS.Timeout;
+    
+    const initializeAuth = async () => {
+      try {
+        // Set a timeout to prevent infinite loading
+        timeoutId = setTimeout(() => {
+          console.warn('Firebase auth initialization timeout - setting loading to false');
+          setLoading(false);
+        }, 5000); // 5 second timeout
 
-    return () => unsubscribe();
+        const unsubscribe = firebaseService.onAuthStateChanged(async (firebaseUser) => {
+          clearTimeout(timeoutId);
+          
+          if (firebaseUser) {
+            try {
+              const userData = await firebaseService.getUser(firebaseUser.uid);
+              if (userData) {
+                setUser(userData);
+              }
+            } catch (error) {
+              console.error('Error loading user data:', error);
+            }
+          } else {
+            setUser(null);
+          }
+          setLoading(false);
+        });
+
+        return () => {
+          clearTimeout(timeoutId);
+          unsubscribe();
+        };
+      } catch (error) {
+        console.error('Error initializing authentication:', error);
+        clearTimeout(timeoutId);
+        setLoading(false);
+      }
+    };
+
+    const cleanup = initializeAuth();
+    return () => {
+      clearTimeout(timeoutId);
+      cleanup.then(unsubscribe => unsubscribe && unsubscribe());
+    };
   }, []);
 
   // Load user data when user changes

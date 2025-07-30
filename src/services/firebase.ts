@@ -42,10 +42,30 @@ let db: any;
 let auth: any;
 
 try {
-  app = initializeApp(firebaseConfig);
-  db = getFirestore(app);
-  auth = getAuth(app);
-  console.log('Firebase initialized successfully');
+  // Check if all required environment variables are present
+  const requiredEnvVars = [
+    'VITE_FIREBASE_API_KEY',
+    'VITE_FIREBASE_AUTH_DOMAIN', 
+    'VITE_FIREBASE_PROJECT_ID',
+    'VITE_FIREBASE_STORAGE_BUCKET',
+    'VITE_FIREBASE_MESSAGING_SENDER_ID',
+    'VITE_FIREBASE_APP_ID'
+  ];
+  
+  const missingVars = requiredEnvVars.filter(varName => !import.meta.env[varName]);
+  
+  if (missingVars.length > 0) {
+    console.warn('Missing Firebase environment variables:', missingVars);
+    console.warn('Firebase will not be initialized. App will run in offline mode.');
+    app = null;
+    db = null;
+    auth = null;
+  } else {
+    app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+    auth = getAuth(app);
+    console.log('Firebase initialized successfully');
+  }
 } catch (error) {
   console.error('Firebase initialization error:', error);
   app = null;
@@ -142,6 +162,10 @@ class FirebaseService {
 
   onAuthStateChanged(callback: (user: FirebaseUser | null) => void): () => void {
     if (!this.isFirebaseAvailable()) {
+      // If Firebase is not available, immediately call callback with null
+      // and return a no-op unsubscribe function
+      console.warn('Firebase not available - calling auth callback with null');
+      setTimeout(() => callback(null), 100);
       return () => {};
     }
     return onAuthStateChanged(auth, callback);
